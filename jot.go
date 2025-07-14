@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,13 +12,40 @@ import (
 )
 
 type Jot struct {
-	id          int
-	name        string
-	description string
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "jot")
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := sql.Open("sqlite3", "./jot.db")
+	if err != nil {
+		http.Error(w, "Database connection error", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT id, name, description FROM jots")
+	if err != nil {
+		http.Error(w, "Error fetching Jots: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var jots []Jot
+	for rows.Next() {
+		var j Jot
+		if err := rows.Scan(&j.Id, &j.Name, &j.Description); err != nil {
+			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jots = append(jots, j)
+	}
+
+	fmt.Fprintf(w, "All Jots:\n")
+	for _, j := range jots {
+		fmt.Fprintf(w, "Name: %s\nDescription: %s\n\n", j.Name, j.Description)
+	}
 }
 
 func allHandler(w http.ResponseWriter, r *http.Request) {
@@ -38,17 +66,15 @@ func allHandler(w http.ResponseWriter, r *http.Request) {
 	var jots []Jot
 	for rows.Next() {
 		var j Jot
-		if err := rows.Scan(&j.id, &j.name, &j.description); err != nil {
+		if err := rows.Scan(&j.Id, &j.Name, &j.Description); err != nil {
 			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		jots = append(jots, j)
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jots)
 
-	fmt.Fprintf(w, "All Jots:\n")
-	for _, j := range jots {
-		fmt.Fprintf(w, "Name: %s, Description: %s\n", j.name, j.description)
-	}
 }
 
 func newHandler(w http.ResponseWriter, r *http.Request) {
@@ -76,11 +102,10 @@ func newHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Created Jot: %+v\n", name)
-	fmt.Fprintf(w, "New Jot created: %s", name)
+	fmt.Fprintf(w, "Created Jot: %s", name)
 }
 
-func main() {
-
+func init() {
 	if _, err := os.Stat("jot.db"); os.IsNotExist(err) {
 		file, err := os.Create("jot.db")
 		if err != nil {
@@ -96,8 +121,10 @@ func main() {
 	defer db.Close()
 
 	createTable(db)
+}
 
-	http.HandleFunc("/", handler)
+func main() {
+	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/all", allHandler)
 	http.HandleFunc("/new", newHandler)
 
@@ -121,7 +148,7 @@ func createTable(db *sql.DB) {
 	statement.Exec()
 }
 
-func createJot(db *sql.DB, name, description string) error {
+func createJot(db *sql.DB, name string, description string) error {
 	insertSQL := `INSERT INTO jots (name, description) VALUES (?, ?)`
 	statement, err := db.Prepare(insertSQL)
 	if err != nil {
