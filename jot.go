@@ -7,14 +7,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Jot struct {
-	Id          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Id          int       `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +27,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT id, name, description FROM jots")
+	rows, err := db.Query("SELECT id, name, description, createdAt FROM jots")
 	if err != nil {
 		http.Error(w, "Error fetching Jots: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -35,7 +37,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	var jots []Jot
 	for rows.Next() {
 		var j Jot
-		if err := rows.Scan(&j.Id, &j.Name, &j.Description); err != nil {
+		if err := rows.Scan(&j.Id, &j.Name, &j.Description, &j.CreatedAt); err != nil {
 			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -44,7 +46,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "All Jots:\n")
 	for _, j := range jots {
-		fmt.Fprintf(w, "Name: %s\nDescription: %s\n\n", j.Name, j.Description)
+		fmt.Fprintf(w, "Name: %s\nDescription: %s\nCreated: %s\n\n", j.Name, j.Description, j.CreatedAt.Format(time.RFC822))
 	}
 }
 
@@ -56,7 +58,7 @@ func allHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT id, name, description FROM jots")
+	rows, err := db.Query("SELECT * FROM jots")
 	if err != nil {
 		http.Error(w, "Error fetching Jots: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -66,7 +68,7 @@ func allHandler(w http.ResponseWriter, r *http.Request) {
 	var jots []Jot
 	for rows.Next() {
 		var j Jot
-		if err := rows.Scan(&j.Id, &j.Name, &j.Description); err != nil {
+		if err := rows.Scan(&j.Id, &j.Name, &j.Description, &j.CreatedAt); err != nil {
 			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -137,7 +139,8 @@ func createTable(db *sql.DB) {
 	CREATE TABLE IF NOT EXISTS jots (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
-		description TEXT NOT NULL
+		description TEXT NOT NULL,
+		createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`
 
