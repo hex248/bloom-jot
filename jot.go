@@ -81,7 +81,6 @@ func newHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	// check for db file, if it doesn't exist, create it
 	if _, err := os.Stat("jot.db"); os.IsNotExist(err) {
 		file, err := os.Create("jot.db")
 		if err != nil {
