@@ -1,2 +1,2 @@
 # Bloom-Jot
-note taking/todo for the bloom ecosystem
+Note taking/todo for the bloom ecosystem
