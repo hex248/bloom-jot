@@ -61,6 +61,18 @@ func newHandler(w http.ResponseWriter, r *http.Request) {
 	if dateTime == "" {
 		dateTime = "01 Jan 70 00:00 +0000"
 	}
+
+	// replace second space with '+' if there are two consecutive spaces
+	// this is a workaround for Apple Shortcuts' URL formatting for '+'
+	if len(dateTime) > 0 {
+		for i := range len(dateTime) - 1 {
+			if dateTime[i] == ' ' && dateTime[i+1] == ' ' {
+				dateTime = dateTime[:i+1] + "+" + dateTime[i+2:]
+				break
+			}
+		}
+	}
+
 	parsedDateTime, err := time.Parse(time.RFC822Z, dateTime)
 	if err != nil {
 		http.Error(w, "Invalid dateTime format: "+err.Error(), http.StatusBadRequest)
