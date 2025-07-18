@@ -16,67 +16,32 @@ type Jot struct {
 	Id          int       `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	Datetime    time.Time `json:"dateTime"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", "./jot.db")
-	if err != nil {
-		http.Error(w, "Database connection error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	rows, err := db.Query("SELECT id, name, description, createdAt FROM jots")
+	jots, err := getAllJots()
 	if err != nil {
 		http.Error(w, "Error fetching Jots: "+err.Error(), http.StatusInternalServerError)
 		return
-	}
-	defer rows.Close()
-
-	var jots []Jot
-	for rows.Next() {
-		var j Jot
-		if err := rows.Scan(&j.Id, &j.Name, &j.Description, &j.CreatedAt); err != nil {
-			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		jots = append(jots, j)
 	}
 
 	fmt.Fprintf(w, "All Jots:\n")
 	for _, j := range jots {
-		fmt.Fprintf(w, "Name: %s\nDescription: %s\nCreated: %s\n\n", j.Name, j.Description, j.CreatedAt.Format(time.RFC822))
+		fmt.Fprintf(w, "Name: %s\nDescription: %s\nDate: %s\nCreated: %s\n\n", j.Name, j.Description, j.Datetime.Format(time.RFC822), j.CreatedAt.Format(time.RFC822))
 	}
 }
 
 func allHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("sqlite3", "./jot.db")
-	if err != nil {
-		http.Error(w, "Database connection error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	rows, err := db.Query("SELECT * FROM jots")
+	jots, err := getAllJots()
 	if err != nil {
 		http.Error(w, "Error fetching Jots: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	var jots []Jot
-	for rows.Next() {
-		var j Jot
-		if err := rows.Scan(&j.Id, &j.Name, &j.Description, &j.CreatedAt); err != nil {
-			http.Error(w, "Error scanning Jot: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		jots = append(jots, j)
-	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(jots)
-
 }
 
 func newHandler(w http.ResponseWriter, r *http.Request) {
@@ -91,13 +56,28 @@ func newHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dateTime := r.URL.Query().Get("dateTime")
+
+	if dateTime == "" {
+		dateTime = "01 Jan 70 00:00 +0000"
+	}
+	parsedDateTime, err := time.Parse(time.RFC822Z, dateTime)
+	if err != nil {
+		http.Error(w, "Invalid dateTime format: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if parsedDateTime.IsZero() {
+		http.Error(w, "Invalid dateTime value", http.StatusBadRequest)
+		return
+	}
+
 	db, err := sql.Open("sqlite3", "./jot.db")
 	if err != nil {
 		http.Error(w, "Database connection error", http.StatusInternalServerError)
 		return
 	}
 	defer db.Close()
-	err = createJot(db, name, description)
+	err = createJot(db, name, description, parsedDateTime)
 	if err != nil {
 		http.Error(w, "Error creating Jot: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -114,6 +94,8 @@ func init() {
 			log.Fatal(err.Error())
 		}
 		file.Close()
+
+		log.Println("Database file created: jot.db")
 	}
 
 	db, err := sql.Open("sqlite3", "./jot.db")
@@ -140,6 +122,7 @@ func createTable(db *sql.DB) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
 		description TEXT NOT NULL,
+		dateTime DATETIME NOT NULL,
 		createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`
@@ -148,15 +131,41 @@ func createTable(db *sql.DB) {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	statement.Exec()
 }
 
-func createJot(db *sql.DB, name string, description string) error {
-	insertSQL := `INSERT INTO jots (name, description) VALUES (?, ?)`
+func getAllJots() ([]Jot, error) {
+	db, err := sql.Open("sqlite3", "./jot.db")
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT * FROM jots")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jots []Jot
+	for rows.Next() {
+		var j Jot
+		if err := rows.Scan(&j.Id, &j.Name, &j.Description, &j.Datetime, &j.CreatedAt); err != nil {
+			return nil, err
+		}
+		jots = append(jots, j)
+	}
+
+	return jots, nil
+}
+
+func createJot(db *sql.DB, name string, description string, dateTime time.Time) error {
+	insertSQL := `INSERT INTO jots (name, description, dateTime) VALUES (?, ?, ?)`
 	statement, err := db.Prepare(insertSQL)
 	if err != nil {
 		return err
 	}
-	_, err = statement.Exec(name, description)
+	_, err = statement.Exec(name, description, dateTime)
 	return err
 }
